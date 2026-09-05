@@ -1,0 +1,21 @@
+<link rel="stylesheet" href="./city.css">
+<script src="https://unpkg.com/@babel/standalone@7.26.9/babel.min.js"></script>
+<script type="module">
+  const source = await fetch("./city.js").then((response) => {
+    if (!response.ok) throw new Error(`City source failed: ${response.status}`);
+    return response.text();
+  });
+  const { code } = Babel.transform(source, {
+    filename: "city.tsx",
+    presets: [["typescript", { allExtensions: true, isTSX: true }], ["react", { runtime: "classic" }]],
+    sourceType: "module",
+  });
+  const blobUrl = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+  try {
+    await import(blobUrl);
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+</script>
+
+<div id="root"></div>
