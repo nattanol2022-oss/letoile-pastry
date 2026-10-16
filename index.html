@@ -46,10 +46,12 @@
       position: fixed;
       right: 1rem;
       bottom: auto;
-      width: clamp(18rem, 38vw, 34rem);
-      z-index: 12;
+      width: clamp(6rem, 10vw, 8rem);
+      height: clamp(7rem, 12vw, 9rem);
+      z-index: 8;
+      pointer-events: none;
       will-change: top, left, right;
-      transition: top 1.15s cubic-bezier(.22,.61,.36,1), left 1.15s cubic-bezier(.22,.61,.36,1), right 1.15s cubic-bezier(.22,.61,.36,1), transform .35s ease, opacity .35s ease;
+      transition: top 1.15s cubic-bezier(.22,.61,.36,1), left 1.15s cubic-bezier(.22,.61,.36,1), right 1.15s cubic-bezier(.22,.61,.36,1), width .35s ease, height .35s ease, transform .35s ease, opacity .35s ease;
     }
     .hero-cat.is-peeking {
       z-index: 2;
@@ -70,7 +72,7 @@
       main > section:first-child h1 { max-width: 14rem; font-size: clamp(3.2rem, 15vw, 5rem); }
       main > section:first-child .relative.z-10 { align-self: flex-start; }
       .hero-cat { right: -3.5rem; bottom: -1rem; width: 11rem; height: 13rem; opacity: .48; }
-      .hero-cat.is-following { right: .15rem; width: 11rem; height: 13rem; opacity: .62; }
+      .hero-cat.is-following { right: .15rem; width: 5.5rem; height: 6.5rem; opacity: .62; }
       .hero-cat.is-peeking { right: -3.5rem; }
     }
     @media (prefers-reduced-motion: reduce) {
