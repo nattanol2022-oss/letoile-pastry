@@ -1,67 +1,43 @@
 (function () {
   const catButton = document.querySelector(".hero-cat");
-  const catImage = catButton?.querySelector("img");
+  const catModel = catButton?.querySelector("model-viewer");
   const hero = catButton?.closest("section");
+  if (!catButton || !catModel || !hero) return;
 
-  if (!catButton || !catImage || !hero) return;
-
-  const assetRoot = "./background_removed_images/";
-  const frames = {
-    idle: assetRoot + "Calico_cat_sitting_idle_202609051909_no_background.png",
-    blink: assetRoot + "Calico_cat_mascot_blinking_202609051909_no_background.png",
-    smile: assetRoot + "Calico_cat_mascot_smiling_202609051909_no_background.png",
-    wave: assetRoot + "Calico_cat_waving_paw_mascot_202609051909_no_background.png",
-    jump: [
-      assetRoot + "Calico_cat_jumping_mid-air_202609051909_2_no_background.png",
-      assetRoot + "Calico_cat_jumping_mid-air_202609051909_3_no_background.png",
-      assetRoot + "Calico_cat_jumping_mid-air_202609051909_4_no_background.png",
-    ],
-  };
-
-  const preload = (source) => {
-    const image = new Image();
-    image.src = source;
-  };
-  [frames.idle, frames.blink, frames.smile, frames.wave, ...frames.jump].forEach(preload);
-
-  let idleTimer;
-  let idleIndex = 0;
-  let idleLoop;
-  let isJumping = false;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let isFollowing = false;
   let followFrame;
-  const idleFrames = [frames.idle, frames.idle, frames.blink, frames.idle, frames.smile, frames.wave];
+  let launchTimeout;
+  let pointerTilt = { x: 0, y: 0 };
+  let walking = false;
 
-  function showFrame(source) {
-    if (catImage.getAttribute("src") !== source) catImage.src = source;
+  function setOrbit(orbit) {
+    if (!reducedMotion.matches) catModel.cameraOrbit = orbit;
   }
 
-  function stopIdle() {
-    window.clearInterval(idleLoop);
-    window.clearTimeout(idleTimer);
+  function setMovement(isWalking) {
+    if (walking === isWalking) return;
+    walking = isWalking;
+    catModel.animationName = isWalking ? "cat walk" : "cat lazy idle";
+    if (!reducedMotion.matches) catModel.play();
   }
 
-  function startIdle() {
-    if (isJumping || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    stopIdle();
-    idleIndex = 0;
-    idleLoop = window.setInterval(() => {
-      showFrame(idleFrames[idleIndex % idleFrames.length]);
-      idleIndex += 1;
-    }, 900);
+  function animateOrbit() {
+    if (reducedMotion.matches || document.hidden) return;
+    const now = performance.now() / 1000;
+    const drift = Math.sin(now * 0.7) * 5;
+    const lift = 76 + Math.sin(now * 0.9) * 2;
+    setOrbit(`${drift + pointerTilt.x * 4}deg ${lift + pointerTilt.y * 3}deg 105%`);
+    requestAnimationFrame(animateOrbit);
   }
 
-  function scheduleIdle() {
-    stopIdle();
-    idleTimer = window.setTimeout(startIdle, 220);
-  }
-
-  function setScrollFrame(progress) {
-    if (isJumping) return;
-    stopIdle();
-    const frameIndex = Math.min(frames.jump.length - 1, Math.floor(progress * frames.jump.length));
-    showFrame(frames.jump[frameIndex]);
-    scheduleIdle();
+  function playLaunch() {
+    if (reducedMotion.matches) return;
+    window.clearTimeout(launchTimeout);
+    catButton.classList.remove("is-launching");
+    void catButton.offsetWidth;
+    catButton.classList.add("is-launching");
+    launchTimeout = window.setTimeout(() => catButton.classList.remove("is-launching"), 1000);
   }
 
   function rectanglesOverlap(first, second, padding = 24) {
@@ -85,47 +61,16 @@
         if (element === catButton || catButton.contains(element)) return false;
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
+        return style.display !== "none" && style.visibility !== "hidden" &&
+          Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
       })
       .map((element) => element.getBoundingClientRect());
   }
 
-  function getVisibleTextObstacles() {
-    const textRects = [];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-
-    while (walker.nextNode()) {
-      const textNode = walker.currentNode;
-      if (!textNode.textContent.trim() || catButton.contains(textNode)) continue;
-
-      const parent = textNode.parentElement;
-      if (!parent) continue;
-      const style = window.getComputedStyle(parent);
-      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) continue;
-
-      const range = document.createRange();
-      range.selectNodeContents(textNode);
-      [...range.getClientRects()].forEach((rect) => {
-        if (
-          rect.width > 0 &&
-          rect.height > 0 &&
-          rect.bottom > 0 &&
-          rect.top < window.innerHeight &&
-          rect.right > 0 &&
-          rect.left < window.innerWidth
-        ) {
-          textRects.push(rect);
-        }
-      });
-      range.detach();
-    }
-
-    return textRects;
-  }
-
   function findFollowPosition() {
-    const width = catButton.getBoundingClientRect().width;
-    const height = width * 1.08;
+    const rect = catButton.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
     const margin = Math.max(12, window.innerWidth * 0.02);
     const center = (window.innerWidth - width) / 2;
     const candidates = [
@@ -133,123 +78,61 @@
       { left: center, top: window.innerHeight - height - margin },
       { left: window.innerWidth - width - margin, top: window.innerHeight - height - margin },
       { left: margin, top: window.innerHeight * 0.12 },
-      { left: center, top: window.innerHeight * 0.12 },
       { left: window.innerWidth - width - margin, top: window.innerHeight * 0.12 },
     ];
-    const obstacles = [...getVisibleObstacles(), ...getVisibleTextObstacles()];
-    const preferredIndex = Math.floor(window.scrollY / Math.max(320, window.innerHeight * 0.85)) % 3;
-    const preferredLeft = [margin, center, window.innerWidth - width - margin][preferredIndex];
-    const orderedCandidates = candidates
-      .map((candidate, index) => ({
-        candidate,
-        index,
-        distance: Math.abs(candidate.left - preferredLeft),
-      }))
-      .sort((first, second) => first.distance - second.distance);
-    const free = orderedCandidates.find(({ candidate }) => {
-      const rect = { ...candidate, right: candidate.left + width, bottom: candidate.top + height };
-      return !obstacles.some((obstacle) => rectanglesOverlap(rect, obstacle));
-    })?.candidate;
-
-    if (free) return { position: free, peeking: false };
-
-    const peekLeft = preferredIndex === 0
-      ? -width * 0.72
-      : window.innerWidth - width * 0.28;
-    return {
-      position: {
-        left: peekLeft,
-        top: Math.max(24, window.innerHeight - height - margin),
-      },
-      peeking: true,
-    };
+    const preferred = [margin, center, window.innerWidth - width - margin][
+      Math.floor(window.scrollY / Math.max(320, window.innerHeight * .85)) % 3
+    ];
+    const obstacles = getVisibleObstacles();
+    return candidates
+      .sort((a, b) => Math.abs(a.left - preferred) - Math.abs(b.left - preferred))
+      .find((candidate) => !obstacles.some((obstacle) => rectanglesOverlap({
+        ...candidate, right: candidate.left + width, bottom: candidate.top + height
+      }, obstacle))) || candidates[0];
   }
 
   function updateFollower() {
     followFrame = undefined;
-    const threshold = Math.max(160, hero.getBoundingClientRect().height * 0.55);
-    const shouldFollow = window.scrollY > threshold;
-
+    const shouldFollow = window.scrollY > Math.max(160, hero.getBoundingClientRect().height * .55);
     if (!shouldFollow) {
       isFollowing = false;
-      catButton.classList.remove("is-following", "is-peeking");
+      setMovement(false);
+      catButton.classList.remove("is-following");
       catButton.style.removeProperty("left");
       catButton.style.removeProperty("top");
       catButton.style.removeProperty("right");
-      if (!isJumping) showFrame(frames.idle);
+      setOrbit("0deg 76deg 105%");
       return;
     }
-
     if (!isFollowing) {
-      const heroRect = catButton.getBoundingClientRect();
       isFollowing = true;
       catButton.classList.add("is-following");
-      catButton.style.left = `${heroRect.left}px`;
-      catButton.style.top = `${heroRect.top}px`;
-      catButton.style.right = "auto";
-      // Start from the current viewport position, then glide to the first safe zone.
-      window.requestAnimationFrame(() => {
-        if (isFollowing) updateFollower();
-      });
-      playJump();
-      return;
+      playLaunch();
     }
-
-    const { position, peeking } = findFollowPosition();
+    setMovement(true);
+    const position = findFollowPosition();
     catButton.style.left = `${position.left}px`;
     catButton.style.top = `${position.top}px`;
     catButton.style.right = "auto";
-    catButton.classList.toggle("is-peeking", peeking);
   }
 
   function requestFollowerUpdate() {
-    if (followFrame === undefined) followFrame = window.requestAnimationFrame(updateFollower);
+    if (followFrame === undefined) followFrame = requestAnimationFrame(updateFollower);
   }
 
-  function setupScrollAnimation() {
-    if (!window.gsap || !window.ScrollTrigger) {
-      window.addEventListener("scroll", scheduleIdle, { passive: true });
-      return;
-    }
-
-    window.gsap.registerPlugin(window.ScrollTrigger);
-    window.gsap.to({}, {
-      scrollTrigger: {
-        trigger: hero,
-        start: "top top",
-        end: "bottom top",
-        scrub: true,
-        onUpdate: (trigger) => setScrollFrame(trigger.progress),
-        onLeave: scheduleIdle,
-        onLeaveBack: scheduleIdle,
-      },
-    });
-  }
-
-  function playJump() {
-    if (isJumping) return;
-    isJumping = true;
-    stopIdle();
-    catButton.classList.add("is-jumping");
-
-    frames.jump.forEach((frame, index) => {
-      window.setTimeout(() => showFrame(frame), index * 130);
-    });
-    window.setTimeout(() => {
-      catButton.classList.remove("is-jumping");
-      showFrame(frames.idle);
-      isJumping = false;
-      scheduleIdle();
-    }, 760);
-  }
-
-  catButton.addEventListener("click", () => {
-    playJump();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  catButton.addEventListener("pointermove", (event) => {
+    const rect = catButton.getBoundingClientRect();
+    pointerTilt = {
+      x: (event.clientX - rect.left) / rect.width - .5,
+      y: (event.clientY - rect.top) / rect.height - .5
+    };
   });
-
-  setupScrollAnimation();
+  catButton.addEventListener("pointerleave", () => { pointerTilt = { x: 0, y: 0 }; });
+  catButton.addEventListener("click", () => {
+    playLaunch();
+    window.scrollTo({ top: 0, behavior: reducedMotion.matches ? "auto" : "smooth" });
+  });
   window.addEventListener("scroll", requestFollowerUpdate, { passive: true });
   window.addEventListener("resize", requestFollowerUpdate);
-  scheduleIdle();
+  animateOrbit();
 })();
